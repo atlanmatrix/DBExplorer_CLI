@@ -1,27 +1,35 @@
 import sys
 import traceback
-from typing import Optional, Union
 from collections import deque
+from typing import Optional
 
-from _exceptions import ActionInvalid, DuplicateNameError, ObjectNotExists, TFSUnexpectedError, DuplicateAttrNameError
-from _node import Node
-from _tree import Tree
+from .conf import MODE
+from .base_type import Node
+from .tfs_cache import TFSCache
+from .exceptions import ActionInvalid, ObjectNotExists
 
 
-class TreeFS(Tree):
+class TreeFS:
     """
     Tree structure File System
     """
+
     def __init__(self) -> None:
         self.root: Node = Node('/')
         self.curr: Node = self.root
+
         self._build_default_nodes()
 
     def _build_default_nodes(self):
-        # Top level node
-        db_file_lst = ['master', 'base', 'ccubase', 'Co_1']
-        for db_file in db_file_lst:
-            self.root.add_child(db_file)
+        if MODE == 'lazy':
+            tfs_cache = TFSCache()
+            self.meta = tfs_cache.meta
+            self.cache = tfs_cache.cache
+        else:
+            # Top level node
+            db_file_lst = ['master', 'base', 'ccubase', 'Co_1']
+            for db_file in db_file_lst:
+                self.root.add_child(db_file)
 
     def _get_node_by_path(self, path: str, target: Node) -> Node:
         """
@@ -39,8 +47,9 @@ class TreeFS(Tree):
             # Support <.|..|str>
             if _dir in ['.', '']:
                 continue
-            elif _dir == '..':
-                # Node itself and its parent should exists
+
+            if _dir == '..':
+                # Node itself and its parent should exist
                 if curr is None or curr.p_node is None:
                     raise ActionInvalid('cursor overflow')
                 # Move current cursor to parent
@@ -48,7 +57,7 @@ class TreeFS(Tree):
             else:
                 # Move current cursor to specific
                 if _dir not in curr.children:
-                    raise ObjectNotExists(f'Object: {_dir} not eixsts')
+                    raise ObjectNotExists(f'Object: {_dir} not exists')
                 curr = self._get_node_by_name(curr, _dir)
 
         return curr
@@ -98,18 +107,22 @@ class TreeFS(Tree):
         return self._ls(target)
 
     def _rm(self):
+        # Only file and empty directory can be deleted
+        # You can use -r to recursive delete dir node
+        # if
         pass
 
-    def _ls(self, target: Optional[Node]=None, t_f='*', n_f: str=''):
+    def _find(self):
+        pass
+
+    def _ls(self, target: Optional[Node] = None, n_f: str = ''):
         """
         List all filtered nodes or attributes or both of target node.
 
-        t_f: type filter, available values: ['*', 'n', 'a']
         n_f: name filter, logic: nf in iter
         """
-        # Use current node as default action object
-        if target is None:
-            target = self.curr
+        # Use current node as default action object if target is None
+        target = target or self.curr
 
         # Check if target is invalid
         if target is None:
@@ -120,23 +133,31 @@ class TreeFS(Tree):
             target.children[node_name]
             for node_name in target.children
             if n_f in node_name)
-        # Compute attributes
-        attr_lst = filter(lambda attr_name: n_f in attr_name, target.attr)
 
         # Return needed data(node/attr)
-        if t_f == '*':
-            return node_lst, attr_lst
-        elif t_f == 'n':
-            return node_lst
-        elif t_f == 'a':
-            return attr_lst
-        else:
-            raise TypeError(f'No such type: {t_f}')
+        return node_lst
 
-    def _tab(self, t_f='*', n_f: str=''):
+    def _stat(self, target: Optional[Node] = None, n_f: str = ''):
+        """
+        List all filtered nodes or attributes or both of target node.
+
+        n_f: name filter, logic: nf in iter
+        """
+        # Use current node as default action object if target is None
+        target = target or self.curr
+
+        # Check if target is invalid
+        if target is None:
+            raise ActionInvalid()
+
+        # Compute attributes
+        attr_lst = filter(lambda attr_name: n_f in attr_name, target.attr)
+        return attr_lst
+
+    def _tab(self, t_f='*', n_f: str = ''):
         # Return brother nodes' names
         if self.curr.p_node is None:
-           raise ActionInvalid('cursor overflow')
+            raise ActionInvalid('cursor overflow')
         return self._ls(self.curr.p_node, t_f, n_f)
 
     def _pwd(self):
@@ -159,9 +180,9 @@ class TreeFS(Tree):
         for node_name in target.children:
             if node_name == name:
                 return target.children[node_name]
-        raise ObjectNotExists(f'Object: {name} not eixsts')
+        raise ObjectNotExists(f'Object: {name} not exists')
 
-    def _cd(self, path:str=None):
+    def _cd(self, path: str = None):
         # Move current cursor to root if no path below cd command
         if path is None:
             self.curr = self.root
@@ -171,7 +192,7 @@ class TreeFS(Tree):
         source = self.root if path.startswith('/') else self.curr
         self.curr = self._get_node_by_path(path, source)
 
-    def _tree(self, target: Optional[Node]=None):
+    def _tree(self, target: Optional[Node] = None):
         if target is None:
             target = self.root
 
@@ -180,9 +201,14 @@ class TreeFS(Tree):
         while node_stack:
             level, curr = node_stack.popleft()
             result_lst.append((level, curr.name))
-            node_stack.extend([(level + 1, curr.children[node_name]) for node_name in curr.children])
+            node_stack.extend(
+                [(level + 1, curr.children[node_name]) for node_name in
+                 curr.children])
 
         return result_lst
+
+    def _flush(self):
+        pass
 
 
 if __name__ == "__main__":
@@ -202,7 +228,8 @@ if __name__ == "__main__":
         try:
             val = input(f'tfs@{mode}:{path}$ ')
             if val.startswith('ls'):
-                print(blue, *[str(x) for x in tfs._ls()[0]], reset, *list(tfs._ls()[1]))
+                print(blue, *[str(x) for x in tfs._ls()[0]], reset,
+                      *list(tfs._ls()[1]))
             elif val.startswith('cd'):
                 tfs._cd(val.split(' ')[-1])
                 path = '/' + tfs._pwd()

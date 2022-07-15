@@ -31,3 +31,11 @@ class AttrNotExistsError(Exception):
 
 class TFSUnexpectedError(Exception):
     pass
+
+
+class CacheDataCorrupted(Exception):
+    pass
+
+
+class CacheUnexpectedError(Exception):
+    pass
