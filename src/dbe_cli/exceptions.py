@@ -1,41 +1,64 @@
-class ActionInvalid(Exception):
+class TFSBaseException(Exception):
+    def __init__(self, obj, message):
+        super().__init__(f'{type(obj)}: {message}')
+
+
+class NoSuchCommandError(TFSBaseException):
+    def __init__(self, message):
+        super().__init__(self, f'Command "{message}" not exists')
+
+
+class CursorOverflow(TFSBaseException):
+    def __init__(self):
+        super().__init__(self, 'Cursor overflow')
+
+
+class InvalidOperationError(TFSBaseException):
+    def __init__(self, message):
+        super().__init__(self, f'Operation "{message}" is invalid')
+
+
+class TFSAttributeError(TFSBaseException):
+    def __init__(self, message):
+        super().__init__(self, message)
+
+
+class ActionInvalid(TFSBaseException):
     pass
 
 
-class DuplicateNameError(Exception):
+class DuplicateNameError(TFSBaseException):
     """
     After create/move/rename operation, if object has the same name of
-    brothers, DuplicateNameError will raised
+    brothers, DuplicateNameError will be raised
     """
     pass
 
 
-class DuplicateAttrNameError(Exception):
-    """
-    """
-    pass
-
-
-class ObjectNotExists(Exception):
-    """
-
-    """
-    pass
-
-
-class AttrNotExistsError(Exception):
+class DuplicateAttrNameError(TFSBaseException):
     """
     """
     pass
 
 
-class TFSUnexpectedError(Exception):
+class ObjectNotExists(TFSBaseException):
+    def __init__(self, message):
+        super().__init__(self, f'Object "{message}" not exists')
+
+
+class AttrNotExistsError(TFSBaseException):
+    """
+    """
     pass
 
 
-class CacheDataCorrupted(Exception):
+class TFSUnexpectedError(TFSBaseException):
     pass
 
 
-class CacheUnexpectedError(Exception):
+class CacheDataCorrupted(TFSBaseException):
+    pass
+
+
+class CacheUnexpectedError(TFSBaseException):
     pass

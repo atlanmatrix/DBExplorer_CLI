@@ -115,22 +115,22 @@ DESCRIPTION
 &nbsp;&nbsp;
 Filter result
 
-### limit** number:  
+### limit number:  
 DESCRIPTION  
 &nbsp;&nbsp;
 Show limited results
 
-### skip** number:  
+### skip number:  
 DESCRIPTION  
 &nbsp;&nbsp;
 Skip specific results
 
-### exec** filename:  
+### exec filename:  
 DESCRIPTION  
 &nbsp;&nbsp;
 Read and run commands in file
 
-### mode** [kv | dict]  
+### mode [kv | dict]  
 DESCRIPTION  
 &nbsp;&nbsp;
 

@@ -1,9 +1,9 @@
 import json
 from json.decoder import JSONDecodeError
 
-from .conf import MODE, CACHE_FILE
-from .exceptions import CacheDataCorrupted
-from .base_type import TFSTree
+from conf import MODE, CACHE_FILE
+from exceptions import CacheDataCorrupted
+from base_type import TFSTree
 
 
 class TFSCache:

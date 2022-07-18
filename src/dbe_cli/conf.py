@@ -3,7 +3,7 @@ Configure of DBE-cli
 """
 
 # """
-# System mode can be lazy 'mode' or 'realtime' mode.
+# System mode can be lazy 'mode' or 'rt' mode.
 # Lazy mode:
 #     Lazy mode can provide high performance if you read more and write less.
 #     System will read data from cache(if exists). You can partial flush cache
@@ -14,7 +14,7 @@ Configure of DBE-cli
 #     System will always read data from target third-part system(by hook) and
 #     will never use cache.
 # """
-MODE = 'lazy'
+MODE = 'rt'
 
 # """
 # Path of cache file.

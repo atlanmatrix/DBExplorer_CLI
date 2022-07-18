@@ -3,8 +3,8 @@ Definition of data structure such as Node, Tree, etc.
 """
 from typing import Optional, Union, Any
 
-from .exceptions import DuplicateNameError, ObjectNotExists, \
-    DuplicateAttrNameError, AttrNotExistsError
+from exceptions import DuplicateNameError, ObjectNotExists, \
+    DuplicateAttrNameError, AttrNotExistsError, TFSAttributeError
 
 
 class Node:
@@ -36,8 +36,8 @@ class Node:
         if key not in self.attr:
             self.attr[key] = val
         else:
-            raise DuplicateAttrNameError(
-                f'Attribute {key} of {self.name} has exist')
+            raise TFSAttributeError(
+                f'{self.name} already exists attribute name {key}')
 
     def del_attr(self, key: str):
         """
@@ -48,10 +48,10 @@ class Node:
         if key not in self.attr:
             self.attr.pop(key)
         else:
-            raise AttrNotExistsError(
-                f'Attribute {key} of {self.name} not exist')
+            raise TFSAttributeError(
+                f'{self.name} does not exists attribute name {key}')
 
-    def add_child(self, child: Union['Node', str]) -> None:
+    def add_child(self, child: Union['Node', str]) -> 'Node':
         """
         Add a child node for current node
         """
@@ -66,19 +66,22 @@ class Node:
 
         # Check if node has the same name as other children
         if child_name in self.children:
-            raise DuplicateNameError(child_name)
+            raise TFSAttributeError(
+                f'{self.name} already exists attribute name {child_name}')
 
         # Add node to children dict
         self.children[child_name] = child_node
+
+        return child_node
 
     def remove_child(self, child_name: str):
         """
         Remove child node by name
         """
         try:
-            self.children.pop(child_name)
+            return self.children.pop(child_name)
         except KeyError:
-            raise ObjectNotExists(f'Object: {child_name} not exist')
+            raise ObjectNotExists(child_name)
 
 
 class TFSTree:
