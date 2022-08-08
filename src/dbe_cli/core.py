@@ -1,14 +1,11 @@
-import sys
-import traceback
 from collections import deque
 from typing import Optional, Union, Any
-from functools import partial
 from abc import ABC, abstractmethod
 
 from conf import MODE
 from base_type import Node
 from tfs_cache import TFSCache
-from exceptions import NoSuchCommandError, CursorOverflow, ActionInvalid, \
+from exceptions import NoSuchCommandError, CursorOverflow, \
     ObjectNotExists, InvalidOperationError
 
 
@@ -137,6 +134,22 @@ class BaseTreeFS(ABC):
         """
 
     @abstractmethod
+    def _cmd_tree(self, target: Optional[Node] = None):
+        if target is None:
+            target = self.root
+
+        result_lst = []
+        node_stack = deque([(0, target)])
+        while node_stack:
+            level, curr = node_stack.popleft()
+            result_lst.append((level, curr.name))
+            node_stack.extend(
+                [(level + 1, curr.children[node_name]) for node_name in
+                 curr.children])
+
+        return result_lst
+
+    @abstractmethod
     def _cmd_cd(self, path: str = None):
         """
         Move current cursor to root if no path below cd command
@@ -175,25 +188,15 @@ class BaseTreeFS(ABC):
         otherwise, all child node will be removed silently
         """
 
-    def _cmd_find(self):
+    @abstractmethod
+    def _cmd_find(self, name: str, path: str):
         pass
 
-    def _cmd_stat(self, target: Optional[Node] = None, n_f: str = ''):
+    @abstractmethod
+    def _cmd_stat(self, target, name: str, value: Optional[str] = None):
         """
-        List all filtered nodes or attributes or both of target node.
-
-        n_f: name filter, logic: nf in iter
+        List all attributes of target node.
         """
-        # Use current node as default action object if target is None
-        target = target or self.curr
-
-        # Check if target is invalid
-        if target is None:
-            raise ActionInvalid()
-
-        # Compute attributes
-        attr_lst = filter(lambda attr_name: n_f in attr_name, target.attr)
-        return attr_lst
 
     def _get_node_by_name(self, target: Node, name: str):
         """
@@ -203,21 +206,6 @@ class BaseTreeFS(ABC):
             if node_name == name:
                 return target.children[node_name]
         raise ObjectNotExists(f'Object: {name} not exists')
-
-    def _cmd_tree(self, target: Optional[Node] = None):
-        if target is None:
-            target = self.root
-
-        result_lst = []
-        node_stack = deque([(0, target)])
-        while node_stack:
-            level, curr = node_stack.popleft()
-            result_lst.append((level, curr.name))
-            node_stack.extend(
-                [(level + 1, curr.children[node_name]) for node_name in
-                 curr.children])
-
-        return result_lst
 
 
 class TreeFS(BaseTreeFS):
@@ -240,22 +228,37 @@ class TreeFS(BaseTreeFS):
 
         return ' '.join(node_lst) if node_lst else '<Empty>'
 
+    def _cmd_tree(self, path: Optional[str] = None):
+        if path is None:
+            node = self.curr
+        else:
+            node = self.get_node_by_path(path)
+
+        result_lst = []
+        node_stack = deque([(0, node)])
+        while node_stack:
+            level, curr = node_stack.pop()
+            result_lst.append((level, curr.name))
+            node_stack.extend(
+                [(level + 1, curr.children[node_name]) for node_name in
+                 curr.children])
+
+        for level, node_name in result_lst:
+            print('  ' * level + '├──' + node_name)
+
     def _cmd_cd(self, path: Optional[str] = None):
         # Move current cursor to root if no path below cd command
         if path is None:
             self.curr = self.root
-            return
-
-        if path == '-':
+        elif path == '-':
             self.curr, self.prev = self.prev, self.curr
-            return
+        else:
+            # Record current node for later use `cd -` to return
+            self.prev = self.curr
+            # Absolute path based on root, while relative path based on current node
+            self.curr = self.get_node_by_path(path)
 
-        # Record current node for later use `cd -` to return
-        self.prev = self.curr
-        # Absolute path based on root, while relative path based on current node
-        self.curr = self.get_node_by_path(path)
-
-    def _cmd_mount(self, db_file: str) -> dict[str, Node]:
+    def _cmd_mount(self, db_file: str) -> str:
         """
         Mount behaviors like mkdir,
         but only search append node to root
@@ -263,7 +266,7 @@ class TreeFS(BaseTreeFS):
         self.root.add_child(db_file)
         return f'Mounted "{db_file}" success'
 
-    def _cmd_unmount(self, db_file: str) -> dict[str, Node]:
+    def _cmd_unmount(self, db_file: str) -> str:
         """
         Unmount behaviors like rm(remove),
         but only search node under root
@@ -275,7 +278,7 @@ class TreeFS(BaseTreeFS):
         """
         Create directory under current dir or specific path
         """
-        if self.curr is self.root:
+        if path == '/':
             raise InvalidOperationError('mkdir under root')
 
         *dir_path_lst, name = path.split('/')
@@ -289,11 +292,62 @@ class TreeFS(BaseTreeFS):
         """
         return self.get_abs_path_by_node(self.curr)
 
-    def _cmd_rm(self, path: str, recursive: bool = False):
+    def _cmd_rm(self, path: str, recursive: bool = False) -> None:
         """
         Only file and empty directory can be deleted if recursive is False
         otherwise, all child node will be removed silently
         """
         node = self.get_node_by_path(path)
-        if len(node.children) == 0:
-            node.children.pop()
+        abs_path = self.get_abs_path_by_node(node)
+        path_lst = abs_path.split('/')
+
+        # Root node and db file level node should not be deleted
+        if len(path_lst) < 2:
+            raise InvalidOperationError('remove root/db file')
+
+        if node.is_leaf():
+            node.p_node.children.pop(node.name)
+        else:
+            # If node contains child nodes, recursive is required to operate removing
+            if recursive:
+                node.p_node.children.pop(node.name)
+            else:
+                raise InvalidOperationError('remove node with children')
+
+    def _cmd_find(self, name: str, path: str = None):
+        node = self.get_node_by_path(path)
+
+        stack = deque([node])
+        path_lst = deque()
+        while stack:
+            curr = stack.popleft()
+            path_lst.append(curr.name)
+            if name in curr.name:
+                print('/'.join(path_lst))
+
+    def _cmd_stat(self, path: str, name: str, value: Optional[str] = None):
+        """
+        Get attributes or set one attribute with value
+        :param path: path of search root
+        :param name: attribute name for get/set
+        :param value: if value is not None, do set, else do get
+        :return:
+        """
+        node = self.get_node_by_path(path)
+
+        if name == '*':
+            return node.attr
+
+        if value is not None:
+            if name in node.attr:
+                ret_str = f'Update attribute "{name}" to value "{value}"'
+            else:
+                ret_str = f'Set value "{value}" a new attribute "{name}"'
+            node.attr[name] = value
+            return ret_str
+
+        ret_dict = {}
+        for attr_name in node.attr:
+            if name in attr_name:
+                ret_dict[attr_name] = node.attr[attr_name]
+        return ret_dict

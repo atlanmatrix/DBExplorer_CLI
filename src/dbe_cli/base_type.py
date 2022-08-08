@@ -83,6 +83,9 @@ class Node:
         except KeyError:
             raise ObjectNotExists(child_name)
 
+    def is_leaf(self):
+        return len(self.children) == 0
+
 
 class TFSTree:
     """
