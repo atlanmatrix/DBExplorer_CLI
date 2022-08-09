@@ -3,8 +3,7 @@ Definition of data structure such as Node, Tree, etc.
 """
 from typing import Optional, Union, Any
 
-from exceptions import DuplicateNameError, ObjectNotExists, \
-    DuplicateAttrNameError, AttrNotExistsError, TFSAttributeError
+from exceptions import ObjectNotExists, TFSAttributeError
 
 
 class Node:
@@ -23,6 +22,7 @@ class Node:
         self.name = name
         self.attr: Optional[dict] = attr or {}
         self.children: dict[str, Node] = {}
+        self.init: bool = False
 
     def __str__(self) -> str:
         return self.name
@@ -43,7 +43,7 @@ class Node:
         """
         Remove specific key of current node
 
-        Raise AttrNotExistsError if attribute not found
+        Raise TFSAttributeError if attribute not found
         """
         if key not in self.attr:
             self.attr.pop(key)
@@ -85,6 +85,9 @@ class Node:
 
     def is_leaf(self):
         return len(self.children) == 0
+
+    def to_json(self):
+        return self.__dict__
 
 
 class TFSTree:
