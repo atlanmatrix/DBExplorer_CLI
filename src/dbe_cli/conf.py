@@ -22,3 +22,5 @@ MODE = 'rt'
 # while client exit.
 # """
 CACHE_FILE = '/tmp/tfs.cache'
+
+DBE_SERVER = 'http://192.168.109.128:23333/api/db/tree'
