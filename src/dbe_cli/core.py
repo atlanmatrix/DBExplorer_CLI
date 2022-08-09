@@ -1,3 +1,5 @@
+import readline
+import logging
 from collections import deque
 from typing import Optional, Union, Any
 from abc import ABC, abstractmethod
@@ -8,11 +10,18 @@ from tfs_cache import TFSCache
 from exceptions import NoSuchCommandError, CursorOverflow, \
     ObjectNotExists, InvalidOperationError
 
+try:
+    import db_op
+except ImportError:
+    db_op = None
+
+logger = logging.getLogger('main')
+
 
 class PathDescriptor:
     def __get__(self, instance, owner):
         # Get path of current node
-        path = instance.get_abs_path_by_node(instance.curr)
+        path = instance.full_path(instance.curr)
         return path
 
     def __set__(self, instance, value):
@@ -27,7 +36,8 @@ class BaseTreeFS(ABC):
     path = PathDescriptor()
     cmd_prefix = '_cmd_'
 
-    def __init__(self, host: str = 'localhost', path: str = '/') -> None:
+    def __init__(self, host: str = 'localhost', path: str = '/') -> \
+            None:
         self.host = host
         self._cmd = [cmd[len(self.cmd_prefix):] for cmd in dir(self) if
                      cmd.startswith('_cmd')]
@@ -39,6 +49,17 @@ class BaseTreeFS(ABC):
         self._build_default_nodes()
 
         self.path = path
+        self._hooks = self._register_hook(db_op)
+
+    @staticmethod
+    def _register_hook(mod):
+        hook_lst = ['fs_open']
+        hooks = {}
+
+        for hook in hook_lst:
+            hooks[hook] = getattr(mod, hook, None)
+
+        return hooks
 
     def __str__(self):
         return f'cli@{self.host}:/{self.path}$ '
@@ -47,7 +68,27 @@ class BaseTreeFS(ABC):
         """
         Auto-complete supported commands
         """
-        options = [cmd for cmd in self._cmd if cmd.startswith(text)]
+        full_cmd = readline.get_line_buffer()
+        cmd_lst = full_cmd.split()
+        if len(cmd_lst) == 0:
+            return self._cmd[state]
+
+        m_cmd, *args = cmd_lst
+        if len(cmd_lst) == 1:
+            if not full_cmd[-1] == ' ':
+                options = [cmd for cmd in self._cmd if cmd.startswith(m_cmd)]
+            else:
+                options = [cmd for cmd in self.curr.children if cmd.startswith('')]
+        elif len(cmd_lst) == 2:
+            op_node = self.curr
+            sub_cmd = args[0]
+            #
+            # half = sub_cmd.split('/')[-1]
+            # sub_cmd = '/'.join(sub_cmd.split('/')[:-1])
+            # op_node = self.get_node_by_path(sub_cmd)
+            options = [cmd for cmd in op_node.children if cmd.startswith(
+                sub_cmd)]
+
         if state < len(options):
             return options[state]
         else:
@@ -82,7 +123,7 @@ class BaseTreeFS(ABC):
                 self.root.add_child(db_file)
 
     @staticmethod
-    def get_abs_path_by_node(node: Node):
+    def full_path(node: Node):
         cursor = node
         node_path_lst = []
         while cursor.p_node is not None:
@@ -92,39 +133,88 @@ class BaseTreeFS(ABC):
         abs_path = '/'.join(reversed(node_path_lst))
         return abs_path
 
-    def get_node_by_path(self, path: str, *, insert: bool = False) -> Node:
+    @staticmethod
+    def _real_path(abs_path):
         """
-        Return node which matches the specific path.
+        Convert path with '.' and '..' to real path
         """
-        # Handle with absolute path and relative path
-        if path.startswith('/'):
-            curr = self.root
-        else:
-            curr = self.curr
+        real_path_lst = []
+        abs_path_lst = abs_path.split('/')
 
-        # Deal with symbol
-        path_lst = path.split('/')
-        for _dir in path_lst:
-            _dir = _dir.strip()
-            # Support <.|..|str>
+        for _dir in abs_path_lst:
             if _dir in ['.', '']:
                 continue
 
             if _dir == '..':
-                # Node itself and its parent should exist
-                if curr is None or curr.p_node is None:
+                if len(real_path_lst) == 0:
                     raise CursorOverflow()
-                # Move current cursor to parent
-                curr = curr.p_node
+                real_path_lst.pop()
             else:
-                # Move current cursor to specific
-                if _dir not in curr.children:
+                real_path_lst.append(_dir)
+        real_path = '/' + '/'.join(real_path_lst)
+        return real_path
+
+    def _abs_path(self, rel_path):
+        """
+        Convert relative to absolute path
+        """
+        p_path = self.full_path(self.curr) or '/'
+        path = f'{p_path}/{rel_path}'
+        return path
+
+    def _build_node_from_db(self, real_path_lst, node_data):
+        curr = self.root
+        for _dir in real_path_lst:
+            if _dir not in curr.children:
+                curr.add_child(_dir)
+            curr = curr.children[_dir]
+
+        for attr_name, attr_val in node_data['attr'].items():
+            curr.add_attr(attr_name, attr_val)
+
+        for child in node_data['children']:
+            curr.add_child(child)
+        curr.init = True
+        return curr
+
+    def get_node_by_path(self, path: str, *, insert: bool = False) -> \
+            Node:
+        """
+        Return node which matches the specific path.
+        """
+        # Get real path
+        abs_path = path
+        if not abs_path.startswith('/'):
+            abs_path = self._abs_path(path)
+        real_path = self._real_path(abs_path)
+
+        real_path_lst = list(filter(lambda x: x, real_path.split('/')))
+
+        # Search TFS tree
+        curr = self.root
+        for _dir in real_path_lst:
+            if _dir not in curr.children or (_dir in curr.children and (not
+                    curr.children[_dir].init)):
+                # Node not found in TFS Tree, search DB if the hook exists
+                hook_open = self._hooks.get('fs_open')
+                if not hook_open:
+                    raise ObjectNotExists(_dir)
+
+                res, nodes_data = hook_open(self.host, real_path)
+                if not res:
                     if not insert:
                         raise ObjectNotExists(_dir)
 
-                    curr.add_child(_dir)
-                curr = self._get_node_by_name(curr, _dir)
+                    hook_add = self._hooks.get('fs_add')
+                    if not hook_add:
+                        raise ObjectNotExists(_dir)
+                    nodes_data = hook_add(real_path)
+                # Build tree node, this will build full chains,
+                # so we should break loop after build
+                curr = self._build_node_from_db(real_path_lst, nodes_data)
+                break
 
+            curr = curr.children[_dir]
         return curr
 
     @abstractmethod
@@ -212,7 +302,7 @@ class TreeFS(BaseTreeFS):
     def __init__(self, host: str = 'localhost', path: str = '/'):
         super(TreeFS, self).__init__(host, path)
 
-    def _cmd_ls(self, path: Optional[str] = None):
+    def _cmd_ls(self, path: Optional[str] = None, f_str: str = ''):
         """
         Return node names under given path
         """
@@ -224,7 +314,8 @@ class TreeFS(BaseTreeFS):
 
         # Compute child nodes
         node_lst = [str(target.children[node_name])
-                    for node_name in target.children]
+                    for node_name in target.children
+                    if f_str in node_name]
 
         return ' '.join(node_lst) if node_lst else '<Empty>'
 
@@ -290,7 +381,7 @@ class TreeFS(BaseTreeFS):
         """
         Return work directory
         """
-        return self.get_abs_path_by_node(self.curr)
+        return self.full_path(self.curr)
 
     def _cmd_rm(self, path: str, recursive: bool = False) -> None:
         """
@@ -298,7 +389,7 @@ class TreeFS(BaseTreeFS):
         otherwise, all child node will be removed silently
         """
         node = self.get_node_by_path(path)
-        abs_path = self.get_abs_path_by_node(node)
+        abs_path = self.full_path(node)
         path_lst = abs_path.split('/')
 
         # Root node and db file level node should not be deleted
@@ -308,7 +399,8 @@ class TreeFS(BaseTreeFS):
         if node.is_leaf():
             node.p_node.children.pop(node.name)
         else:
-            # If node contains child nodes, recursive is required to operate removing
+            # If node contains child nodes,
+            # recursive is required to operate removing
             if recursive:
                 node.p_node.children.pop(node.name)
             else:
@@ -325,7 +417,8 @@ class TreeFS(BaseTreeFS):
             if name in curr.name:
                 print('/'.join(path_lst))
 
-    def _cmd_stat(self, path: str, name: str, value: Optional[str] = None):
+    def _cmd_stat(self, path: str = '.', name: str = '*',
+                  value: Optional[str] = None):
         """
         Get attributes or set one attribute with value
         :param path: path of search root
@@ -351,3 +444,15 @@ class TreeFS(BaseTreeFS):
             if name in attr_name:
                 ret_dict[attr_name] = node.attr[attr_name]
         return ret_dict
+
+    def _cmd_connect(self, host):
+        self.host = host
+        return f'Host has been changed to "{self.host}"'
+
+    def _cmd_debug(self, path=None):
+        if path is None:
+            node = self.curr
+        else:
+            node = self.get_node_by_path(path)
+
+        print(node.to_json())
