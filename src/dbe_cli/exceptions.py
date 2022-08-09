@@ -23,37 +23,9 @@ class TFSAttributeError(TFSBaseException):
         super().__init__(self, message)
 
 
-class ActionInvalid(TFSBaseException):
-    pass
-
-
-class DuplicateNameError(TFSBaseException):
-    """
-    After create/move/rename operation, if object has the same name of
-    brothers, DuplicateNameError will be raised
-    """
-    pass
-
-
-class DuplicateAttrNameError(TFSBaseException):
-    """
-    """
-    pass
-
-
 class ObjectNotExists(TFSBaseException):
     def __init__(self, message):
         super().__init__(self, f'Object "{message}" not exists')
-
-
-class AttrNotExistsError(TFSBaseException):
-    """
-    """
-    pass
-
-
-class TFSUnexpectedError(TFSBaseException):
-    pass
 
 
 class CacheDataCorrupted(TFSBaseException):
