@@ -1,5 +1,4 @@
 import sys
-import traceback
 
 try:
     import readline
@@ -7,7 +6,6 @@ except ImportError:
     import pyreadline as readline
 
 from exceptions import TFSBaseException
-from conf import MODE, CACHE_FILE
 from core import TreeFS
 
 
@@ -30,6 +28,8 @@ def main():
         except KeyboardInterrupt:
             print('bye')
             sys.exit()
+        except Exception as e:
+            print(e)
 
 
 if __name__ == '__main__':
