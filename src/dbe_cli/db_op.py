@@ -4,9 +4,6 @@ import logging
 from conf import DBE_SERVER
 from utils import parse_req_data
 
-logging.basicConfig(
-    filename=r'C:\Users\claude\Documents\dbe_cli\trace.log',
-    level=0)
 logger = logging.getLogger('main')
 
 
@@ -18,7 +15,7 @@ def fs_open(host, real_path) -> dict[str, dict]:
     Get all nodes' data in real_path
     """
     filename, *path = list(filter(lambda x: x, real_path.split('/')))
-    res = requests.post(DBE_SERVER, params={
+    res = requests.post(f'{DBE_SERVER}/api/db/tree', params={
         'host': host,
         'filename': filename,
         'path': '\\'.join(path)
@@ -27,9 +24,12 @@ def fs_open(host, real_path) -> dict[str, dict]:
     if res.status_code == 200:
         req_data = res.json()['data']
         data = parse_req_data(req_data)
+        logger.info(f'Get TreeDB data success:')
+        logger.debug(data)
         return True, data
     else:
-        print('error')
+        logger.error(f'Get TreeDB data failed, response text is:')
+        logger.debug(res.text)
         return False, None
 
 

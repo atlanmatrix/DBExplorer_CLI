@@ -23,4 +23,12 @@ MODE = 'rt'
 # """
 CACHE_FILE = '/tmp/tfs.cache'
 
-DBE_SERVER = 'http://192.168.109.128:23333/api/db/tree'
+DBE_SERVER = 'http://192.168.4.24:8888'
+REQUIRED_VER = '0.4.1'
+
+LOG_COLOR = {
+    'normal': '',
+    'success': '',
+    'warn': '',
+    'reset': ''
+}
