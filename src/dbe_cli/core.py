@@ -1,10 +1,11 @@
 import readline
 import logging
+import requests
 from collections import deque
 from typing import Optional, Union, Any
 from abc import ABC, abstractmethod
 
-from conf import MODE
+from conf import MODE, DBE_SERVER
 from base_type import Node
 from tfs_cache import TFSCache
 from exceptions import NoSuchCommandError, CursorOverflow, \
@@ -40,11 +41,12 @@ class BaseTreeFS(ABC):
             None:
         self.host = host
         self._cmd = [cmd[len(self.cmd_prefix):] for cmd in dir(self) if
-                     cmd.startswith('_cmd')]
-        self._history = deque()
+                     cmd.startswith(self.cmd_prefix)]
         self.root: Node = Node('/')
         self.curr: Node = self.root
         self.prev: Optional[Node] = None
+
+        self._get_db_info()
 
         self._build_default_nodes()
 
@@ -60,6 +62,29 @@ class BaseTreeFS(ABC):
             hooks[hook] = getattr(mod, hook, None)
 
         return hooks
+
+    def _get_db_info(self):
+        print('Loading data from DBE Server...')
+        db_info_url = f'{DBE_SERVER}/api/cfg/host'
+        res = requests.get(db_info_url)
+
+        if res.status_code == 200:
+            res_data = res.json()['data']
+            logger.info(res_data)
+            self.db_info = {
+                db['host']: {
+                    'files': [file['name'] for file in db['dbFiles']],
+                    'name': db['name']
+                }
+                for db in res_data
+            }
+            logging.info(self.db_info)
+            print('Loading data success！')
+        else:
+            logger.error(res.text)
+            self.db_info = None
+            print('Loading data failed, please check if your DBE server '
+                  'accessible')
 
     def __str__(self):
         return f'cli@{self.host}:/{self.path}$ '
@@ -78,16 +103,22 @@ class BaseTreeFS(ABC):
             if not full_cmd[-1] == ' ':
                 options = [cmd for cmd in self._cmd if cmd.startswith(m_cmd)]
             else:
-                options = [cmd for cmd in self.curr.children if cmd.startswith('')]
+                if m_cmd == 'connect':
+                    options = list(self.db_info)
+                else:
+                    options = [cmd for cmd in self.curr.children if cmd.startswith('')]
         elif len(cmd_lst) == 2:
             op_node = self.curr
             sub_cmd = args[0]
-            #
-            # half = sub_cmd.split('/')[-1]
-            # sub_cmd = '/'.join(sub_cmd.split('/')[:-1])
-            # op_node = self.get_node_by_path(sub_cmd)
-            options = [cmd for cmd in op_node.children if cmd.startswith(
-                sub_cmd)]
+
+            if m_cmd == 'connect':
+                options = [host
+                           for host in self.db_info
+                           if host.startswith(sub_cmd)
+                           ]
+            else:
+                options = [cmd for cmd in op_node.children if cmd.startswith(
+                    sub_cmd)]
 
         if state < len(options):
             return options[state]
@@ -118,7 +149,10 @@ class BaseTreeFS(ABC):
             self.cache = tfs_cache.cache
         else:
             # Top level node
-            db_file_lst = ['master', 'base', 'ccubase', 'Co_1']
+            if self.db_info is not None and self.host in self.db_info:
+                db_file_lst = self.db_info[self.host]['files']
+            else:
+                db_file_lst = ['master', 'base', 'ccubase', 'Co_1']
             for db_file in db_file_lst:
                 self.root.add_child(db_file)
 
@@ -446,7 +480,16 @@ class TreeFS(BaseTreeFS):
         return ret_dict
 
     def _cmd_connect(self, host):
+        """
+        Reinit tree after switch host
+        """
         self.host = host
+        self.root: Node = Node('/')
+        self.curr: Node = self.root
+        self.prev: Optional[Node] = None
+
+        self._build_default_nodes()
+
         return f'Host has been changed to "{self.host}"'
 
     def _cmd_debug(self, path=None):
