@@ -27,13 +27,13 @@ class Node:
     def __str__(self) -> str:
         return self.name
 
-    def add_attr(self, key: str, val: Any):
+    def add_attr(self, key: str, val: Any, overwrite: bool = False):
         """
         Add new attribute to current node
 
         Raise DuplicateAttrNameError if attribute exists
         """
-        if key not in self.attr:
+        if key not in self.attr or overwrite:
             self.attr[key] = val
         else:
             raise TFSAttributeError(
@@ -51,26 +51,19 @@ class Node:
             raise TFSAttributeError(
                 f'{self.name} does not exists attribute name {key}')
 
-    def add_child(self, child: Union['Node', str]) -> 'Node':
+    def add_child(self, node_name: str) -> 'Node':
         """
         Add a child node for current node
         """
-        if isinstance(child, Node):
-            # If child is Node object, get its name
-            child_name = child.name
-            child_node = child
-        else:
-            # If child is string, build new node from the string
-            child_name = child
-            child_node = Node(child, self)
+        child_node = Node(node_name, self)
 
         # Check if node has the same name as other children
-        if child_name in self.children:
+        if node_name in self.children:
             raise TFSAttributeError(
-                f'{self.name} already exists attribute name {child_name}')
+                f'{self.name} already exists node name {node_name}')
 
         # Add node to children dict
-        self.children[child_name] = child_node
+        self.children[node_name] = child_node
 
         return child_node
 

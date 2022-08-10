@@ -15,11 +15,15 @@ def fs_open(host, real_path) -> dict[str, dict]:
     Get all nodes' data in real_path
     """
     filename, *path = list(filter(lambda x: x, real_path.split('/')))
+    path = '\\'.join(path)
     res = requests.post(f'{DBE_SERVER}/api/db/tree', params={
         'host': host,
         'filename': filename,
-        'path': '\\'.join(path)
+        'path': path
     })
+
+    logger.info(f'Get TreeDB data start:')
+    logger.info(f'host: "{host}" filename: "{filename}" path: "{path}"')
 
     if res.status_code == 200:
         req_data = res.json()['data']
@@ -33,8 +37,34 @@ def fs_open(host, real_path) -> dict[str, dict]:
         return False, None
 
 
-def fs_add(real_path) -> dict[str, dict]:
-    pass
+def fs_add(host, real_path) -> dict[str, dict]:
+    """
+    Try to create new node
+    """
+
+    *path, sub_key = list(filter(lambda x: x, real_path.split('/')))
+    path = '\\'.join(path)
+
+    res = requests.post(f'{DBE_SERVER}/api/db/tree/add', params={
+        'host': host,
+        'path': path,
+        'sub_key': sub_key
+    })
+
+    logger.info(f'Insert node:')
+    logger.info(f'host: "{host}" sub_key: "{sub_key}" path: "{path}"')
+
+    if res.status_code == 200:
+        if res.json()['code'] == 0:
+            logger.info(f'Insert node {real_path} success')
+            return True
+        else:
+            logger.error(f'Insert node {real_path} failed')
+            return False
+    else:
+        logger.error(f'Insert node {real_path} failed, response text is:')
+        logger.debug(res.text)
+        return False
 
 
 def fs_ls():

@@ -9,7 +9,8 @@ from conf import MODE, DBE_SERVER
 from base_type import Node
 from tfs_cache import TFSCache
 from exceptions import NoSuchCommandError, CursorOverflow, \
-    ObjectNotExists, InvalidOperationError
+    ObjectNotExists, InvalidOperationError, HookMethodNotExists, \
+    HookMethodExecError
 
 try:
     import db_op
@@ -55,7 +56,7 @@ class BaseTreeFS(ABC):
 
     @staticmethod
     def _register_hook(mod):
-        hook_lst = ['fs_open']
+        hook_lst = ['fs_open', 'fs_add']
         hooks = {}
 
         for hook in hook_lst:
@@ -168,10 +169,32 @@ class BaseTreeFS(ABC):
         return abs_path
 
     @staticmethod
-    def _real_path(abs_path):
+    def _real_path_to_lst(real_path):
+        return list(filter(lambda x: x, real_path.split('/')))
+
+    def _get_dirname(self, real_path):
+        dir_name, _ = self._path_split(real_path)
+        return dir_name
+
+    def _get_basename(self, real_path):
+        _, base_name = self._path_split(real_path)
+        return base_name
+
+    def _path_split(self, path):
+        real_path = self._real_path(path)
+        *dir_path_lst, base_name = self._real_path_to_lst(real_path)
+        dir_name = '/' + '/'.join(dir_path_lst)
+
+        return dir_name, base_name
+
+    def _real_path(self, path):
         """
         Convert path with '.' and '..' to real path
         """
+        abs_path = path
+        if not path.startswith('/'):
+            abs_path = self._abs_path(path)
+
         real_path_lst = []
         abs_path_lst = abs_path.split('/')
 
@@ -188,6 +211,21 @@ class BaseTreeFS(ABC):
         real_path = '/' + '/'.join(real_path_lst)
         return real_path
 
+    @staticmethod
+    def _is_inited(target, node_name):
+        """
+
+        """
+        if node_name not in target.children:
+            # Does not exist
+            return False
+
+        if not target.children[node_name].init:
+            # Exist but not inited
+            return False
+
+        return target.children[node_name]
+
     def _abs_path(self, rel_path):
         """
         Convert relative to absolute path
@@ -198,17 +236,26 @@ class BaseTreeFS(ABC):
 
     def _build_node_from_db(self, real_path_lst, node_data):
         curr = self.root
+        logger.info('Build node from DB')
+        logger.debug(f'real_path_lst: "{real_path_lst}"')
+        logger.debug(node_data)
         for _dir in real_path_lst:
             if _dir not in curr.children:
                 curr.add_child(_dir)
+                logger.debug(f'Add new node {_dir}')
+            logger.debug(curr)
             curr = curr.children[_dir]
+            logger.debug(f'Move to {_dir}')
 
-        for attr_name, attr_val in node_data['attr'].items():
-            curr.add_attr(attr_name, attr_val)
+        if node_data is not None and not curr.init:
+            for attr_name, attr_val in node_data['attr'].items():
+                logger.debug(f'Add new attribute {attr_name}: {attr_val}')
+                curr.add_attr(attr_name, attr_val, True)
 
-        for child in node_data['children']:
-            curr.add_child(child)
-        curr.init = True
+            for node_name in node_data['children']:
+                logger.debug(f'Add new node {_dir}')
+                curr.add_child(node_name)
+            curr.init = True
         return curr
 
     def get_node_by_path(self, path: str, *, insert: bool = False) -> \
@@ -216,19 +263,13 @@ class BaseTreeFS(ABC):
         """
         Return node which matches the specific path.
         """
-        # Get real path
-        abs_path = path
-        if not abs_path.startswith('/'):
-            abs_path = self._abs_path(path)
-        real_path = self._real_path(abs_path)
-
-        real_path_lst = list(filter(lambda x: x, real_path.split('/')))
+        real_path = self._real_path(path)
+        real_path_lst = self._real_path_to_lst(real_path)
 
         # Search TFS tree
         curr = self.root
         for _dir in real_path_lst:
-            if _dir not in curr.children or (_dir in curr.children and (not
-                    curr.children[_dir].init)):
+            if not self._is_inited(curr, dir):
                 # Node not found in TFS Tree, search DB if the hook exists
                 hook_open = self._hooks.get('fs_open')
                 if not hook_open:
@@ -236,13 +277,8 @@ class BaseTreeFS(ABC):
 
                 res, nodes_data = hook_open(self.host, real_path)
                 if not res:
-                    if not insert:
-                        raise ObjectNotExists(_dir)
+                    raise ObjectNotExists(_dir)
 
-                    hook_add = self._hooks.get('fs_add')
-                    if not hook_add:
-                        raise ObjectNotExists(_dir)
-                    nodes_data = hook_add(real_path)
                 # Build tree node, this will build full chains,
                 # so we should break loop after build
                 curr = self._build_node_from_db(real_path_lst, nodes_data)
@@ -403,13 +439,35 @@ class TreeFS(BaseTreeFS):
         """
         Create directory under current dir or specific path
         """
+        logger.info('Invoke: _cmd_mkdir')
         if path == '/':
             raise InvalidOperationError('mkdir under root')
 
-        *dir_path_lst, name = path.split('/')
-        dir_path = '/'.join(dir_path_lst)
-        target = self.get_node_by_path(dir_path, insert=recursive)
-        target.add_child(name)
+        dir_name, base_name = self._path_split(path)
+        logger.debug(f'dir_name: "{dir_name}" base_name: "{base_name}"')
+
+        try:
+            curr = self.get_node_by_path(dir_name)
+        except ObjectNotExists as e:
+            if not recursive:
+                raise ObjectNotExists(e)
+            else:
+                raise NotImplementedError('Mkdir with recursive param is not '
+                                          'supported')
+
+        hook_name = 'fs_add'
+        hook_add_node = self._hooks.get(hook_name)
+        if not hook_add_node:
+            raise HookMethodNotExists(hook_name)
+
+        real_path = self._real_path(path)
+        logger.debug(f'real_path: "{real_path}"')
+        res = hook_add_node(self.host, real_path)
+
+        if not res:
+            raise HookMethodExecError(hook_name)
+        curr.add_child(base_name)
+
 
     def _cmd_pwd(self):
         """

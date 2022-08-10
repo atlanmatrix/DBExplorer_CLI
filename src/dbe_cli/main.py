@@ -1,5 +1,6 @@
 import sys
 import logging
+import traceback
 
 import requests
 try:
@@ -10,9 +11,6 @@ except ImportError:
 from conf import DBE_SERVER, REQUIRED_VER
 from exceptions import TFSBaseException
 from core import TreeFS
-
-
-logging.addLevelName(logging.INFO + 5, 'SUCCESS')
 
 
 class CustomFormatter(logging.Formatter):
@@ -87,6 +85,7 @@ def main():
             res and print(res)
         except TFSBaseException as e:
             print(e)
+            logging.error(traceback.format_exc())
         except KeyboardInterrupt:
             print('bye')
             sys.exit()

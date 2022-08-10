@@ -46,6 +46,20 @@ class ObjectNotExists(TFSBaseException):
         super().__init__(self, err_msg)
 
 
+class HookMethodNotExists(TFSBaseException):
+    def __init__(self, message):
+        err_msg = f'Hook "{message}" not exists'
+        logger.error(err_msg)
+        super().__init__(self, err_msg)
+
+
+class HookMethodExecError(TFSBaseException):
+    def __init__(self, message):
+        err_msg = f'Hook "{message}" executed failed'
+        logger.error(err_msg)
+        super().__init__(self, err_msg)
+
+
 class CacheDataCorrupted(TFSBaseException):
     pass
 
