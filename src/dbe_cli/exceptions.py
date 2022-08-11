@@ -46,6 +46,13 @@ class ObjectNotExists(TFSBaseException):
         super().__init__(self, err_msg)
 
 
+class ObjectExists(TFSBaseException):
+    def __init__(self, message):
+        err_msg = f'Object "{message}" exists'
+        logger.error(err_msg)
+        super().__init__(self, err_msg)
+
+
 class HookMethodNotExists(TFSBaseException):
     def __init__(self, message):
         err_msg = f'Hook "{message}" not exists'
