@@ -22,6 +22,7 @@ MODE = 'rt'
 # while client exit.
 # """
 CACHE_FILE = '/tmp/tfs.cache'
+LOG_FILE = r'/tmp/dbe-cli.log'
 
 DBE_SERVER = 'http://192.168.4.24:8888'
 REQUIRED_VER = '0.4.1'

@@ -8,7 +8,7 @@ try:
 except ImportError:
     import pyreadline as readline
 
-from conf import DBE_SERVER, REQUIRED_VER
+from conf import DBE_SERVER, REQUIRED_VER, LOG_FILE
 from exceptions import TFSBaseException
 from core import TreeFS
 
@@ -37,7 +37,7 @@ class CustomFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-f_handler = logging.FileHandler('/tmp/dbe-cli.log')
+f_handler = logging.FileHandler(LOG_FILE)
 f_handler.setLevel(logging.DEBUG)
 f_handler.setFormatter(CustomFormatter())
 
