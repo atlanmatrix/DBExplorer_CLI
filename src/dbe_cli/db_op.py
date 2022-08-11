@@ -120,13 +120,38 @@ def fs_update(host, real_path, sub_key):
         return False
 
 
-def stat_add():
+def stat_add(host, real_path, prop_name, prop_val):
+    path = '\\'.join(real_path.split('/')[1:])
+
+    res = requests.post(f'{DBE_SERVER}/api/db/tree/props/update', params={
+        'host': host,
+        'path': path,
+        'prop_name': prop_name,
+        'prop_val': prop_val,
+    })
+
+    logger.info(f'Update node:')
+    logger.info(f'host: "{host}" path: "{path}"'
+                f'prop_name: "{prop_name}"  prop_val: "{prop_val}"')
+
+    if res.status_code == 200:
+        if res.json()['code'] == 0:
+            logger.info(f'Update node attribute success')
+            return True
+        else:
+            logger.error(f'Update node attribute failed')
+            return False
+    else:
+        logger.error(f'Update node attribute failed, response text is:')
+        logger.debug(res.text)
+        return False
+
+
+def stat_update(*args):
+    return stat_add(*args)
+
+
+def stat_rm(*args):
     pass
 
 
-def stat_rm():
-    pass
-
-
-def stat_update():
-    pass

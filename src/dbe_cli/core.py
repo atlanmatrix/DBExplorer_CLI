@@ -687,11 +687,30 @@ class TreeFS(BaseTreeFS):
 
         if value is not None:
             if name in node.attr:
-                ret_str = f'Update attribute "{name}" to value "{value}"'
+                hook_name = 'stat_add'
+                hook_add_attr = self._hooks.get(hook_name)
+                if not hook_add_attr:
+                    raise HookMethodNotExists(hook_name)
+
+                real_path = self._real_path(path)
+                logger.debug(f'real_path: "{real_path}"')
+                res = hook_add_attr(self.host, real_path, name, value)
+
+                if not res:
+                    raise HookMethodExecError(hook_name)
             else:
-                ret_str = f'Set value "{value}" a new attribute "{name}"'
+                hook_name = 'stat_update'
+                hook_update_attr = self._hooks.get(hook_name)
+                if not hook_update_attr:
+                    raise HookMethodNotExists(hook_name)
+
+                real_path = self._real_path(path)
+                logger.debug(f'real_path: "{real_path}"')
+                res = hook_update_attr(self.host, real_path, name, value)
+
+                if not res:
+                    raise HookMethodExecError(hook_name)
             node.attr[name] = value
-            return ret_str
 
         ret_dict = {}
         for attr_name in node.attr:
