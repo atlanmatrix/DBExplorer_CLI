@@ -1,16 +1,18 @@
+from time import time
 import readline
 import logging
 import requests
 from collections import deque
 from typing import Optional, Union, Any
 from abc import ABC, abstractmethod
+from functools import wraps
 
 from conf import MODE, DBE_SERVER
 from base_type import Node
 from tfs_cache import TFSCache
 from exceptions import NoSuchCommandError, CursorOverflow, \
     ObjectNotExists, InvalidOperationError, HookMethodNotExists, \
-    HookMethodExecError
+    HookMethodExecError, ObjectExists
 
 try:
     import db_op
@@ -31,6 +33,28 @@ class PathDescriptor:
         instance.curr = instance.get_node_by_path(value)
 
 
+def time_cost(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        st_time = time()
+        res = func(self, *args, **kwargs)
+        ed_time = time()
+        cost = ed_time - st_time
+        self.prev_cmd_cost = int(cost * 1000)
+        return res
+    return wrapper
+
+
+class LogColor:
+    grey = "\x1b[38;20m"
+    green = "\x1b[32;20m"
+    blue = "\x1b[34;20m"
+    yellow = "\x1b[33;20m"
+    red = "\x1b[31;20m"
+    bold_red = "\x1b[31;1m"
+    reset = "\x1b[0m"
+
+
 class BaseTreeFS(ABC):
     """
     Tree structure File System
@@ -40,9 +64,12 @@ class BaseTreeFS(ABC):
 
     def __init__(self, host: str = 'localhost', path: str = '/') -> \
             None:
+        self.prev_cmd_cost = 0
         self.host = host
         self._cmd = [cmd[len(self.cmd_prefix):] for cmd in dir(self) if
-                     cmd.startswith(self.cmd_prefix)]
+                     cmd.startswith(self.cmd_prefix) and cmd not in [
+                         self.cmd_prefix + p_cmd for p_cmd in ['debug']
+                     ]]
         self.root: Node = Node('/')
         self.curr: Node = self.root
         self.prev: Optional[Node] = None
@@ -56,7 +83,8 @@ class BaseTreeFS(ABC):
 
     @staticmethod
     def _register_hook(mod):
-        hook_lst = ['fs_open', 'fs_add']
+        hook_lst = ['fs_open', 'fs_add', 'fs_rm', 'fs_update',
+                    'stat_get', 'stat_add', 'stat_rm', 'stat_update']
         hooks = {}
 
         for hook in hook_lst:
@@ -88,7 +116,24 @@ class BaseTreeFS(ABC):
                   'accessible')
 
     def __str__(self):
-        return f'cli@{self.host}:/{self.path}$ '
+        cost_s = str(self.prev_cmd_cost)
+        if self.prev_cmd_cost < 100:
+            legacy_color = LogColor.green
+        elif self.prev_cmd_cost < 800:
+            legacy_color = LogColor.yellow
+        else:
+            legacy_color = LogColor.red
+
+        if cost_s == '0':
+            cost_s = '<1'
+
+        return f'{legacy_color}[{cost_s}ms]{LogColor.reset}' \
+               f'cli' \
+               f'@' \
+               f'{self.host}' \
+               f':' \
+               f'{LogColor.blue}{self.path}{LogColor.reset}' \
+               f'$ '
 
     def cmd_completer(self, text, state):
         """
@@ -131,7 +176,17 @@ class BaseTreeFS(ABC):
         Split command line string into cmd_name and args,
         and call the corresponding method if it is valid.
         """
-        cmd_name, *args = cmd.strip().split()
+        try:
+            cmd_name, *args = cmd.strip().split()
+        except ValueError:
+            # Ignore empty input
+            return
+
+        if cmd_name in ['?', 'h', 'help']:
+            # Shortcut for help
+            cmd_name = 'help'
+            args = args or ['help']
+
         cmd_op = getattr(self, f'{self.cmd_prefix}{cmd_name}', None)
 
         if not cmd_op:
@@ -139,9 +194,6 @@ class BaseTreeFS(ABC):
 
         output = cmd_op(*args)
         return output
-
-    def _format_res(self):
-        pass
 
     def _build_default_nodes(self):
         if MODE == 'lazy':
@@ -165,7 +217,7 @@ class BaseTreeFS(ABC):
             node_path_lst.append(cursor.name)
             cursor = cursor.p_node
 
-        abs_path = '/'.join(reversed(node_path_lst))
+        abs_path = '/' + '/'.join(reversed(node_path_lst))
         return abs_path
 
     @staticmethod
@@ -193,7 +245,7 @@ class BaseTreeFS(ABC):
         """
         abs_path = path
         if not path.startswith('/'):
-            abs_path = self._abs_path(path)
+            abs_path = self.abs_path(path)
 
         real_path_lst = []
         abs_path_lst = abs_path.split('/')
@@ -226,11 +278,11 @@ class BaseTreeFS(ABC):
 
         return target.children[node_name]
 
-    def _abs_path(self, rel_path):
+    def abs_path(self, rel_path):
         """
         Convert relative to absolute path
         """
-        p_path = self.full_path(self.curr) or '/'
+        p_path = self.full_path(self.curr)
         path = f'{p_path}/{rel_path}'
         return path
 
@@ -287,77 +339,6 @@ class BaseTreeFS(ABC):
             curr = curr.children[_dir]
         return curr
 
-    @abstractmethod
-    def _cmd_ls(self, target: Union[str, Node, None] = None):
-        """
-        Return node names under given path
-        """
-
-    @abstractmethod
-    def _cmd_tree(self, target: Optional[Node] = None):
-        if target is None:
-            target = self.root
-
-        result_lst = []
-        node_stack = deque([(0, target)])
-        while node_stack:
-            level, curr = node_stack.popleft()
-            result_lst.append((level, curr.name))
-            node_stack.extend(
-                [(level + 1, curr.children[node_name]) for node_name in
-                 curr.children])
-
-        return result_lst
-
-    @abstractmethod
-    def _cmd_cd(self, path: str = None):
-        """
-        Move current cursor to root if no path below cd command
-        """
-
-    @abstractmethod
-    def _cmd_mount(self, db_file: str) -> dict[str, Node]:
-        """
-        Mount behaviors like mkdir,
-        but only search append node to root
-        """
-
-    @abstractmethod
-    def _cmd_unmount(self, db_file: str) -> dict[str, Node]:
-        """
-        Unmount behaviors like rm(remove),
-        but only search node under root
-        """
-
-    @abstractmethod
-    def _cmd_mkdir(self, path: str, recursive: bool = False):
-        """
-        Create directory under current dir or specific path
-        """
-
-    @abstractmethod
-    def _cmd_pwd(self):
-        """
-        Return work directory
-        """
-
-    @abstractmethod
-    def _cmd_rm(self, path, recursive: bool = False):
-        """
-        Only file and empty directory can be deleted if recursive is False
-        otherwise, all child node will be removed silently
-        """
-
-    @abstractmethod
-    def _cmd_find(self, name: str, path: str):
-        pass
-
-    @abstractmethod
-    def _cmd_stat(self, target, name: str, value: Optional[str] = None):
-        """
-        List all attributes of target node.
-        """
-
     def _get_node_by_name(self, target: Node, name: str):
         """
         Search node with specific name in target node's children
@@ -372,9 +353,74 @@ class TreeFS(BaseTreeFS):
     def __init__(self, host: str = 'localhost', path: str = '/'):
         super(TreeFS, self).__init__(host, path)
 
+    @time_cost
+    def _cmd_connect(self, host):
+        """
+        Connect to DB instance, this will reinit cache tree
+
+        Usage:
+            connect <domain|ip>
+        """
+        self.host = host
+        self.root: Node = Node('/')
+        self.curr: Node = self.root
+        self.prev: Optional[Node] = None
+
+        self._build_default_nodes()
+
+        return f'Host has been changed to "{self.host}"'
+
+    @time_cost
+    def _cmd_help(self, cmd: str = ''):
+        """
+        Print helpful information for commands
+
+        *   You can press `TAB` key twice to view all commands
+        **  You can also press `TAB` to auto-complete node name
+
+        PAY ATTENTION:
+        * This system use **lazy load** mechanism to avoid frequently DB
+        operations and speed up your access.
+        * Because of this reason, if **others** change DB data, you may not be
+        notified until one action be triggered to update **virtual tree**.
+        * But if you modify the database yourself, the cache tree will also
+        be updated, it is real-time.
+
+        If you have any questions while using this program, create issues here:
+        https://github.com/atlanmatrix/DBExplorer_CLI/issues
+
+        Usage:
+            ? [cmd]
+            h [cmd]
+            help [cmd]
+        """
+        cmd_obj = getattr(self, self.cmd_prefix + cmd, None)
+        if cmd_obj is not None:
+            return cmd_obj.__doc__
+
+    @time_cost
+    def _cmd_debug(self, path=None):
+        """
+        View the specified node information
+
+        Usage:
+            debug [path]
+        """
+        if path is None:
+            node = self.curr
+        else:
+            node = self.get_node_by_path(path)
+
+        print(node.to_json())
+
+    @time_cost
     def _cmd_ls(self, path: Optional[str] = None, f_str: str = ''):
         """
-        Return node names under given path
+        List all child nodes of specific node,
+        if not specified, it will list child nodes of current node
+
+        Usage:
+            ls [node_path] [filter]
         """
         # Use current node as default action object if path is None
         if path is not None:
@@ -387,9 +433,22 @@ class TreeFS(BaseTreeFS):
                     for node_name in target.children
                     if f_str in node_name]
 
-        return ' '.join(node_lst) if node_lst else '<Empty>'
+        return LogColor.blue \
+               + ' '.join(node_lst) if node_lst else '<Empty>' \
+               + LogColor.reset
 
-    def _cmd_tree(self, path: Optional[str] = None):
+    @time_cost
+    def _cmd_tree(self, path: Optional[str] = None, f_str: str = ''):
+        """
+        Print all nodes in specific node as a tree of **virtual tree**
+
+        PAY ATTENTION:
+        * If you try visit some node which has not cached in **virtual
+        tree**, it will try fetch data from DB and cached them.
+
+        Usage:
+            tree [path] [filter]
+        """
         if path is None:
             node = self.curr
         else:
@@ -401,14 +460,26 @@ class TreeFS(BaseTreeFS):
             level, curr = node_stack.pop()
             result_lst.append((level, curr.name))
             node_stack.extend(
-                [(level + 1, curr.children[node_name]) for node_name in
-                 curr.children])
+                [(level + 1, curr.children[node_name])
+                 for node_name in curr.children if f_str in node_name])
 
         for level, node_name in result_lst:
             print('  ' * level + '├──' + node_name)
 
+    @time_cost
     def _cmd_cd(self, path: Optional[str] = None):
-        # Move current cursor to root if no path below cd command
+        """
+        Move to specific node
+
+        PAY ATTENTION:
+        Command `cd` will prefer cache data rather than requests for DB,
+        if you want real-time data in DB, you should use `flush`
+
+        Usage:
+            cd              Behavior like `cd /`
+            cd -            Move to previous node
+            cd <path>       Move to specific node
+        """
         if path is None:
             self.curr = self.root
         elif path == '-':
@@ -416,28 +487,56 @@ class TreeFS(BaseTreeFS):
         else:
             # Record current node for later use `cd -` to return
             self.prev = self.curr
-            # Absolute path based on root, while relative path based on current node
+            # Absolute path based on root,
+            # while relative path based on current node
             self.curr = self.get_node_by_path(path)
 
+    @time_cost
+    def _cmd_flush(self):
+        """
+        Get real-time data from DB, this may take more time and reduce your
+        experience, if you don't particularly need real-time data,
+        you should use `cd` command
+
+        Usage:
+            flush
+        """
+        self.curr.init = False
+        self.curr.stat = {}
+        self.curr.children = {}
+        # Refresh cache
+        self._cmd_cd('.')
+        self._cmd_ls('.')
+
+    @time_cost
     def _cmd_mount(self, db_file: str) -> str:
         """
-        Mount behaviors like mkdir,
-        but only search append node to root
+        Mount behaviors like mkdir, but only append node to `root`
+
+        Usage:
+            mount <dev>
         """
         self.root.add_child(db_file)
         return f'Mounted "{db_file}" success'
 
+    @time_cost
     def _cmd_unmount(self, db_file: str) -> str:
         """
-        Unmount behaviors like rm(remove),
-        but only search node under root
+        Unmount behaviors like rm(remove), but only search node in `root`
+
+        Usage:
+            unmount <dev>
         """
         self.root.remove_child(db_file)
         return f'Unmounted "{db_file}" success'
 
+    @time_cost
     def _cmd_mkdir(self, path: str, recursive: Any = False):
         """
-        Create directory under current dir or specific path
+        Create new node in specific node
+
+        Usage:
+            mkdir <path>
         """
         logger.info('Invoke: _cmd_mkdir')
         if path == '/':
@@ -468,17 +567,72 @@ class TreeFS(BaseTreeFS):
             raise HookMethodExecError(hook_name)
         curr.add_child(base_name)
 
+    @time_cost
+    def _cmd_mv(self, old_path, new_path):
+        """
+        Move child in current node
 
+        Usage:
+            mv <old_path> <new_path>
+        """
+        if '/' in old_path or '/' in new_path:
+            raise ValueError('ERROR: You can only move nodes under the same '
+                             'parent node')
+
+        self._cmd_rename(old_path, new_path)
+
+    @time_cost
+    def _cmd_rename(self, old_name, new_name):
+        """
+        Rename child in current node
+
+        Usage:
+            rename <old_name> <new_name>
+        """
+        p_path = self.full_path(self.curr)
+
+        if old_name not in self.curr.children:
+            raise ObjectNotExists(old_name)
+
+        if new_name in self.curr.children:
+            raise ObjectExists(new_name)
+
+        hook_name = 'fs_update'
+        hook_update_node = self._hooks.get(hook_name)
+        if not hook_update_node:
+            raise HookMethodNotExists(hook_name)
+
+        real_path = self._real_path(p_path)
+        logger.debug(f'real_path: "{real_path}"')
+        res = hook_update_node(self.host, f'{real_path}/{old_name}', new_name)
+
+        if not res:
+            raise HookMethodExecError(hook_name)
+
+        # Destroy node data
+        self.curr.init = False
+        self.curr.stat = {}
+        self.curr.children = {}
+        # Refresh cache
+        self._cmd_cd('.')
+
+    @time_cost
     def _cmd_pwd(self):
         """
-        Return work directory
+        Print working directory
+
+        Usage:
+            pwd
         """
         return self.full_path(self.curr)
 
+    @time_cost
     def _cmd_rm(self, path: str, recursive: bool = False) -> None:
         """
-        Only file and empty directory can be deleted if recursive is False
-        otherwise, all child node will be removed silently
+        Remove a node
+
+        Usage:
+            rm <path>
         """
         node = self.get_node_by_path(path)
         abs_path = self.full_path(node)
@@ -488,35 +642,43 @@ class TreeFS(BaseTreeFS):
         if len(path_lst) < 2:
             raise InvalidOperationError('remove root/db file')
 
-        if node.is_leaf():
-            node.p_node.children.pop(node.name)
-        else:
-            # If node contains child nodes,
-            # recursive is required to operate removing
-            if recursive:
-                node.p_node.children.pop(node.name)
-            else:
-                raise InvalidOperationError('remove node with children')
+        hook_name = 'fs_rm'
+        hook_fs_rm = self._hooks.get(hook_name)
+        if not hook_fs_rm:
+            raise HookMethodNotExists(hook_name)
 
+        real_path = self._real_path(path)
+        res = hook_fs_rm(self.host, real_path)
+
+        if not res:
+            raise HookMethodExecError(hook_name)
+        # Destroy node data
+        p_node = node.p_node
+        p_node.init = False
+        p_node.stat = {}
+        p_node.children = {}
+        # Refresh cache
+        self._cmd_cd('.')
+
+    @time_cost
     def _cmd_find(self, name: str, path: str = None):
-        node = self.get_node_by_path(path)
+        """
+        Search for files in a node
 
-        stack = deque([node])
-        path_lst = deque()
-        while stack:
-            curr = stack.popleft()
-            path_lst.append(curr.name)
-            if name in curr.name:
-                print('/'.join(path_lst))
+        Usage:
+            find name [path]
+        """
+        raise NotImplementedError('Command `find` has not been implemented')
 
+    @time_cost
     def _cmd_stat(self, path: str = '.', name: str = '*',
                   value: Optional[str] = None):
         """
-        Get attributes or set one attribute with value
-        :param path: path of search root
-        :param name: attribute name for get/set
-        :param value: if value is not None, do set, else do get
-        :return:
+        Get attribute(s) of a node or set one attribute of a node,
+        get or set depends on whether the third parameter is provided
+
+        Usage:
+            stat [node_path] [filter] [value]
         """
         node = self.get_node_by_path(path)
 
@@ -536,24 +698,3 @@ class TreeFS(BaseTreeFS):
             if name in attr_name:
                 ret_dict[attr_name] = node.attr[attr_name]
         return ret_dict
-
-    def _cmd_connect(self, host):
-        """
-        Reinit tree after switch host
-        """
-        self.host = host
-        self.root: Node = Node('/')
-        self.curr: Node = self.root
-        self.prev: Optional[Node] = None
-
-        self._build_default_nodes()
-
-        return f'Host has been changed to "{self.host}"'
-
-    def _cmd_debug(self, path=None):
-        if path is None:
-            node = self.curr
-        else:
-            node = self.get_node_by_path(path)
-
-        print(node.to_json())
