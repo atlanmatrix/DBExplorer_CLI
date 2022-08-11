@@ -7,7 +7,8 @@ from utils import parse_req_data
 logger = logging.getLogger('main')
 
 
-__all__ = ['fs_open', 'fs_add', 'fs_ls', 'fs_cd', 'fs_rm']
+__all__ = ['fs_open', 'fs_add', 'fs_rm', 'fs_update',
+           'stat_add', 'stat_rm', 'stat_update']
 
 
 def fs_open(host, real_path) -> dict[str, dict]:
@@ -41,7 +42,6 @@ def fs_add(host, real_path) -> dict[str, dict]:
     """
     Try to create new node
     """
-
     *path, sub_key = list(filter(lambda x: x, real_path.split('/')))
     path = '\\'.join(path)
 
@@ -67,16 +67,66 @@ def fs_add(host, real_path) -> dict[str, dict]:
         return False
 
 
-def fs_ls():
-    # Behavior while open a directory in TFS
+def fs_rm(host, real_path):
+    """
+    Behavior while delete a directory in TFS
+    """
+    path = '\\'.join(real_path.split('/')[1:])
+    res = requests.post(f'{DBE_SERVER}/api/db/tree/delete', params={
+        'host': host,
+        'path': path,
+    })
+
+    logger.info(f'Delete node:')
+    logger.info(f'host: "{host}" path: "{real_path}"')
+
+    if res.status_code == 200:
+        if res.json()['code'] == 0:
+            logger.info(f'Delete node {real_path} success')
+            return True
+        else:
+            logger.error(f'Delete node {real_path} failed')
+            return False
+    else:
+        logger.error(f'Delete node {real_path} failed, response text is:')
+        logger.debug(res.text)
+        return False
+
+
+def fs_update(host, real_path, sub_key):
+    # *path, sub_key = list(filter(lambda x: x, real_path.split('/')))
+    path = '\\'.join(real_path.split('/')[1:])
+
+    res = requests.post(f'{DBE_SERVER}/api/db/tree/update', params={
+        'host': host,
+        'path': path,
+        'sub_key': sub_key
+    })
+
+    logger.info(f'Rename node:')
+    logger.info(f'host: "{host}" sub_key: "{sub_key}" path: "{path}"')
+
+    if res.status_code == 200:
+        if res.json()['code'] == 0:
+            logger.info(f'Rename node {real_path} to {sub_key} success')
+            return True
+        else:
+            logger.error(f'Rename node {real_path} to {sub_key} failed')
+            return False
+    else:
+        logger.error(f'Rename node {real_path} to {sub_key} failed, '
+                     f'response text is:')
+        logger.debug(res.text)
+        return False
+
+
+def stat_add():
     pass
 
 
-def fs_cd():
-    # Behavior while open a directory in TFS
+def stat_rm():
     pass
 
 
-def fs_rm():
-    # Behavior while open a directory in TFS
+def stat_update():
     pass
