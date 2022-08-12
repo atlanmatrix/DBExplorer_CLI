@@ -1,8 +1,8 @@
 import requests
 import logging
 
-from conf import DBE_SERVER
-from utils import parse_req_data
+from .conf import DBE_SERVER
+from .utils import parse_req_data
 
 logger = logging.getLogger('main')
 

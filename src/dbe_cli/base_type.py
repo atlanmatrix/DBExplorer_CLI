@@ -1,9 +1,9 @@
 """
 Definition of data structure such as Node, Tree, etc.
 """
-from typing import Optional, Union, Any
+from typing import Optional, Any
 
-from exceptions import ObjectNotExists, TFSAttributeError
+from .exceptions import ObjectNotExists, TFSAttributeError
 
 
 class Node:

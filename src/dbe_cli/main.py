@@ -2,15 +2,16 @@ import sys
 import logging
 import traceback
 
-import requests
 try:
     import readline
 except ImportError:
     import pyreadline as readline
 
-from conf import DBE_SERVER, REQUIRED_VER, LOG_FILE
-from exceptions import TFSBaseException
-from core import TreeFS
+import requests
+
+from .conf import DBE_SERVER, REQUIRED_VER, LOG_FILE
+from .exceptions import TFSBaseException
+from .core import TreeFS
 
 
 class CustomFormatter(logging.Formatter):

@@ -4,20 +4,19 @@ import logging
 from time import time
 from collections import deque
 from typing import Optional, Any
-from abc import ABC
 from functools import wraps
 
 import requests
 
-from conf import MODE, DBE_SERVER
-from base_type import Node
-from tfs_cache import TFSCache
-from exceptions import NoSuchCommandError, CursorOverflow, \
+from .conf import MODE, DBE_SERVER
+from .base_type import Node
+from .tfs_cache import TFSCache
+from .exceptions import NoSuchCommandError, CursorOverflow, \
     ObjectNotExists, InvalidOperationError, HookMethodNotExists, \
     HookMethodExecError, ObjectExists
 
 try:
-    import db_op
+    from . import db_op
 except ImportError:
     db_op = None
 
@@ -57,7 +56,7 @@ class LogColor:
     reset = "\x1b[0m"
 
 
-class BaseTreeFS(ABC):
+class BaseTreeFS:
     """
     Tree structure File System
     """
@@ -85,6 +84,9 @@ class BaseTreeFS(ABC):
 
     @staticmethod
     def _register_hook(mod):
+        if mod is None:
+            raise ModuleNotFoundError('db_op')
+
         hook_lst = ['fs_open', 'fs_add', 'fs_rm', 'fs_update',
                     'stat_get', 'stat_add', 'stat_rm', 'stat_update']
         hooks = {}
@@ -321,27 +323,37 @@ class BaseTreeFS(ABC):
         """
         Return node which matches the specific path.
         """
+        logger.info('Invoke get_node_by_path')
+        logger.debug(f'path: {path}')
         real_path = self._real_path(path)
         real_path_lst = self._real_path_to_lst(real_path)
+        logger.debug(f'real_path: {real_path}')
 
         # Search TFS tree
         curr = self.root
         for _dir in real_path_lst:
+            logger.debug(f'find node: {_dir}')
             if not self._is_inited(curr, dir):
+                hook_name = 'fs_open'
+                logger.debug(f'is inited: False')
+                logger.info(f'invoke hook: {hook_name}')
                 # Node not found in TFS Tree, search DB if the hook exists
-                hook_open = self._hooks.get('fs_open')
+                hook_open = self._hooks.get(hook_name)
                 if not hook_open:
-                    raise ObjectNotExists(_dir)
+                    logger.debug(f'hook {hook_name} not exists')
+                    raise HookMethodNotExists(hook_name)
 
                 res, nodes_data = hook_open(self.host, real_path)
                 if not res:
-                    raise ObjectNotExists(_dir)
+                    logger.debug(f'hook {hook_name} execute error')
+                    raise HookMethodExecError(hook_name)
 
                 # Build tree node, this will build full chains,
                 # so we should break loop after build
                 curr = self._build_node_from_db(real_path_lst, nodes_data)
                 break
 
+            logger.debug(f'is inited: True')
             curr = curr.children[_dir]
         return curr
 
@@ -486,6 +498,9 @@ class TreeFS(BaseTreeFS):
             cd -            Move to previous node
             cd <path>       Move to specific node
         """
+        logger.info('Invoke cd')
+        logger.debug(f'path: {path}')
+
         if path is None:
             self.curr = self.root
         elif path == '-':
