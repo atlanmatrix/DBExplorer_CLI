@@ -151,7 +151,26 @@ def stat_update(*args):
     return stat_add(*args)
 
 
-def stat_rm(*args):
-    pass
+def stat_rm(host, real_path, prop_name):
+    path = '\\'.join(real_path.split('/')[1:])
 
+    res = requests.post(f'{DBE_SERVER}/api/db/tree/props/delete', params={
+        'host': host,
+        'path': path,
+        'prop_name': prop_name,
+    })
 
+    logger.info(f'Delete node attribute:')
+    logger.info(f'host: "{host}" path: "{path}" prop_name: "{prop_name}"')
+
+    if res.status_code == 200:
+        if res.json()['code'] == 0:
+            logger.info(f'Delete node attribute success')
+            return True
+        else:
+            logger.error(f'Delete node attribute failed')
+            return False
+    else:
+        logger.error(f'Delete node attribute failed, response text is:')
+        logger.debug(res.text)
+        return False

@@ -1,11 +1,13 @@
-from time import time
+import json
 import readline
 import logging
-import requests
+from time import time
 from collections import deque
-from typing import Optional, Union, Any
-from abc import ABC, abstractmethod
+from typing import Optional, Any
+from abc import ABC
 from functools import wraps
+
+import requests
 
 from conf import MODE, DBE_SERVER
 from base_type import Node
@@ -151,6 +153,8 @@ class BaseTreeFS(ABC):
             else:
                 if m_cmd == 'connect':
                     options = list(self.db_info)
+                elif m_cmd in ['?', 'h', 'help']:
+                    options = self._cmd
                 else:
                     options = [cmd for cmd in self.curr.children if cmd.startswith('')]
         elif len(cmd_lst) == 2:
@@ -162,6 +166,8 @@ class BaseTreeFS(ABC):
                            for host in self.db_info
                            if host.startswith(sub_cmd)
                            ]
+            elif m_cmd in ['?', 'h', 'help']:
+                options = [cmd for cmd in self._cmd if cmd.startswith(sub_cmd)]
             else:
                 options = [cmd for cmd in op_node.children if cmd.startswith(
                     sub_cmd)]
@@ -683,7 +689,7 @@ class TreeFS(BaseTreeFS):
         node = self.get_node_by_path(path)
 
         if name == '*':
-            return node.attr
+            return json.dumps(node.attr, indent='  ')
 
         if value is not None:
             if name in node.attr:
@@ -716,4 +722,31 @@ class TreeFS(BaseTreeFS):
         for attr_name in node.attr:
             if name in attr_name:
                 ret_dict[attr_name] = node.attr[attr_name]
-        return ret_dict
+        return json.dumps(ret_dict, indent='  ')
+
+    @time_cost
+    def _cmd_rmstat(self, path: str = '.', name: str = None):
+        """
+        Remove one attribute from specific node, default node is current
+
+        Usage:
+            rmstat [node_path] <attribute_name>
+        """
+        if not name:
+            name = path
+            path = '.'
+        node = self.get_node_by_path(path)
+
+        hook_name = 'stat_rm'
+        hook_stat_rm = self._hooks.get(hook_name)
+        if not hook_stat_rm:
+            raise HookMethodNotExists(hook_name)
+
+        real_path = self._real_path(path)
+        res = hook_stat_rm(self.host, real_path, name)
+
+        if not res:
+            raise HookMethodExecError(hook_name)
+
+        node.init = False
+        node.attr = {}

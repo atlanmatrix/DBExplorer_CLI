@@ -52,11 +52,12 @@ logger = logging.getLogger('main')
 
 def main():
     # Check version
+    print(f'Check server <{DBE_SERVER}> version...')
+    logger.info(f'Check server <{DBE_SERVER}> version...')
     res = requests.get(f'{DBE_SERVER}/api/sys/info')
-    print('Check server version...')
+
     if res.status_code == 200:
         sys_info = res.json()['data']
-        logger.info('Check server version...')
         if (server_ver := sys_info.get('ver', '')) < REQUIRED_VER:
             logger.error(f'Server version {server_ver} is too low: '
                          f'at least >= {REQUIRED_VER}')
@@ -69,7 +70,7 @@ def main():
     else:
         logger.error('Get server version failed: ')
         logger.debug(res.text)
-        print('Get server version failed: ', res.text)
+        print('Get server version failed, reason: ', res.text)
         return
 
     tfs = TreeFS()
