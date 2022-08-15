@@ -1,6 +1,8 @@
 """
 Configure of DBE-cli
 """
+import os
+
 
 # """
 # System mode can be lazy 'mode' or 'rt' mode.
@@ -21,8 +23,13 @@ MODE = 'rt'
 # It will be automatically loaded while a new client created, and be updated
 # while client exit.
 # """
-CACHE_FILE = '/tmp/tfs.cache'
-LOG_FILE = r'/tmp/dbe-cli.log'
+
+DATA_DIR = '/tmp'
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR)
+
+CACHE_FILE = os.path.join(DATA_DIR, 'tfs.cache')
+LOG_FILE = os.path.join(DATA_DIR, 'dbe-cli.log')
 
 DBE_SERVER = 'http://192.168.4.24:8888'
 REQUIRED_VER = '0.4.1'
