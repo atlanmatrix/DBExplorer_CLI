@@ -61,8 +61,8 @@ class HookMethodNotExists(TFSBaseException):
 
 
 class HookMethodExecError(TFSBaseException):
-    def __init__(self, message):
-        err_msg = f'Hook "{message}" executed failed'
+    def __init__(self, name, message):
+        err_msg = f'Hook "{name}" executed failed: {message}'
         logger.error(err_msg)
         super().__init__(self, err_msg)
 

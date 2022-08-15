@@ -346,7 +346,7 @@ class BaseTreeFS:
                 res, nodes_data = hook_open(self.host, real_path)
                 if not res:
                     logger.debug(f'hook {hook_name} execute error')
-                    raise HookMethodExecError(hook_name)
+                    raise HookMethodExecError(hook_name, nodes_data)
 
                 # Build tree node, this will build full chains,
                 # so we should break loop after build
@@ -582,10 +582,10 @@ class TreeFS(BaseTreeFS):
 
         real_path = self._real_path(path)
         logger.debug(f'real_path: "{real_path}"')
-        res = hook_add_node(self.host, real_path)
+        res, err_msg = hook_add_node(self.host, real_path)
 
         if not res:
-            raise HookMethodExecError(hook_name)
+            raise HookMethodExecError(hook_name, err_msg)
         curr.add_child(base_name)
 
     @time_cost
@@ -625,10 +625,11 @@ class TreeFS(BaseTreeFS):
 
         real_path = self._real_path(p_path)
         logger.debug(f'real_path: "{real_path}"')
-        res = hook_update_node(self.host, f'{real_path}/{old_name}', new_name)
+        res, err_msg = hook_update_node(
+            self.host, f'{real_path}/{old_name}', new_name)
 
         if not res:
-            raise HookMethodExecError(hook_name)
+            raise HookMethodExecError(hook_name, err_msg)
 
         # Destroy node data
         self.curr.init = False
@@ -669,10 +670,10 @@ class TreeFS(BaseTreeFS):
             raise HookMethodNotExists(hook_name)
 
         real_path = self._real_path(path)
-        res = hook_fs_rm(self.host, real_path)
+        res, err_msg = hook_fs_rm(self.host, real_path)
 
         if not res:
-            raise HookMethodExecError(hook_name)
+            raise HookMethodExecError(hook_name, err_msg)
         # Destroy node data
         p_node = node.p_node
         p_node.init = False
@@ -704,7 +705,7 @@ class TreeFS(BaseTreeFS):
         node = self.get_node_by_path(path)
 
         if name == '*':
-            return json.dumps(node.attr, indent='  ')
+            return json.dumps(node.attr, indent='  ', ensure_ascii=False)
 
         if value is not None:
             if name in node.attr:
@@ -715,10 +716,10 @@ class TreeFS(BaseTreeFS):
 
                 real_path = self._real_path(path)
                 logger.debug(f'real_path: "{real_path}"')
-                res = hook_add_attr(self.host, real_path, name, value)
+                res, err_msg = hook_add_attr(self.host, real_path, name, value)
 
                 if not res:
-                    raise HookMethodExecError(hook_name)
+                    raise HookMethodExecError(hook_name, err_msg)
             else:
                 hook_name = 'stat_update'
                 hook_update_attr = self._hooks.get(hook_name)
@@ -727,17 +728,17 @@ class TreeFS(BaseTreeFS):
 
                 real_path = self._real_path(path)
                 logger.debug(f'real_path: "{real_path}"')
-                res = hook_update_attr(self.host, real_path, name, value)
+                res, err_msg = hook_update_attr(self.host, real_path, name, value)
 
                 if not res:
-                    raise HookMethodExecError(hook_name)
+                    raise HookMethodExecError(hook_name, err_msg)
             node.attr[name] = value
 
         ret_dict = {}
         for attr_name in node.attr:
             if name in attr_name:
                 ret_dict[attr_name] = node.attr[attr_name]
-        return json.dumps(ret_dict, indent='  ')
+        return json.dumps(ret_dict, indent='  ', ensure_ascii=False)
 
     @time_cost
     def _cmd_rmstat(self, path: str = '.', name: str = None):
@@ -758,10 +759,10 @@ class TreeFS(BaseTreeFS):
             raise HookMethodNotExists(hook_name)
 
         real_path = self._real_path(path)
-        res = hook_stat_rm(self.host, real_path, name)
+        res, err_msg = hook_stat_rm(self.host, real_path, name)
 
         if not res:
-            raise HookMethodExecError(hook_name)
+            raise HookMethodExecError(hook_name, err_msg)
 
         node.init = False
         node.attr = {}

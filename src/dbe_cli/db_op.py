@@ -28,15 +28,19 @@ def fs_open(host, real_path) -> Dict[str, dict]:
     logger.info(f'host: "{host}" filename: "{filename}" path: "{path}"')
 
     if res.status_code == 200:
-        req_data = res.json()['data']
-        data = parse_req_data(req_data)
-        logger.info(f'Get TreeDB data success:')
-        logger.debug(data)
-        return True, data
+        if res.json()['code'] == 0:
+            data = parse_req_data(res.json()['data'])
+            logger.info(f'Get TreeDB data success:')
+            logger.debug(data)
+            return True, data
+        else:
+            logger.error(f'Get TreeDB data failed:')
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
         logger.error(f'Get TreeDB data failed, response text is:')
         logger.debug(res.text)
-        return False, None
+        return False, res.text
 
 
 def fs_add(host, real_path) -> Dict[str, dict]:
@@ -57,15 +61,16 @@ def fs_add(host, real_path) -> Dict[str, dict]:
 
     if res.status_code == 200:
         if res.json()['code'] == 0:
-            logger.info(f'Insert node {real_path} success')
-            return True
+            logger.info(f'Insert node success')
+            return True, None
         else:
-            logger.error(f'Insert node {real_path} failed')
-            return False
+            logger.error(f'Insert node failed')
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
         logger.error(f'Insert node {real_path} failed, response text is:')
         logger.debug(res.text)
-        return False
+        return False, res.text
 
 
 def fs_rm(host, real_path):
@@ -83,15 +88,17 @@ def fs_rm(host, real_path):
 
     if res.status_code == 200:
         if res.json()['code'] == 0:
-            logger.info(f'Delete node {real_path} success')
-            return True
+            logger.info(f'Delete node success')
+            logger.debug(res.json()['data'])
+            return True, None
         else:
-            logger.error(f'Delete node {real_path} failed')
-            return False
+            logger.error(f'Delete node failed')
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
         logger.error(f'Delete node {real_path} failed, response text is:')
         logger.debug(res.text)
-        return False
+        return False, res.text
 
 
 def fs_update(host, real_path, sub_key):
@@ -109,16 +116,16 @@ def fs_update(host, real_path, sub_key):
 
     if res.status_code == 200:
         if res.json()['code'] == 0:
-            logger.info(f'Rename node {real_path} to {sub_key} success')
-            return True
+            logger.info(f'Rename node success')
+            return True, None
         else:
-            logger.error(f'Rename node {real_path} to {sub_key} failed')
-            return False
+            logger.error(f'Rename node failed')
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
-        logger.error(f'Rename node {real_path} to {sub_key} failed, '
-                     f'response text is:')
+        logger.error(f'Rename node failed, response text is:')
         logger.debug(res.text)
-        return False
+        return False, res.text
 
 
 def stat_add(host, real_path, prop_name, prop_val):
@@ -138,14 +145,15 @@ def stat_add(host, real_path, prop_name, prop_val):
     if res.status_code == 200:
         if res.json()['code'] == 0:
             logger.info(f'Update node attribute success')
-            return True
+            return True, None
         else:
             logger.error(f'Update node attribute failed')
-            return False
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
         logger.error(f'Update node attribute failed, response text is:')
         logger.debug(res.text)
-        return False
+        return False, res.text
 
 
 def stat_update(*args):
@@ -167,11 +175,12 @@ def stat_rm(host, real_path, prop_name):
     if res.status_code == 200:
         if res.json()['code'] == 0:
             logger.info(f'Delete node attribute success')
-            return True
+            return True, None
         else:
             logger.error(f'Delete node attribute failed')
-            return False
+            logger.debug(res.json()['msg'])
+            return False, res.json()['msg']
     else:
         logger.error(f'Delete node attribute failed, response text is:')
         logger.debug(res.text)
-        return False
+        return False, res.text
