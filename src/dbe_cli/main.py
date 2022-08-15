@@ -59,7 +59,8 @@ def main():
 
     if res.status_code == 200:
         sys_info = res.json()['data']
-        if (server_ver := sys_info.get('ver', '')) < REQUIRED_VER:
+        server_ver = sys_info.get('ver', '')
+        if server_ver < REQUIRED_VER:
             logger.error(f'Server version {server_ver} is too low: '
                          f'at least >= {REQUIRED_VER}')
             print(f'Server version {server_ver} is too low: '

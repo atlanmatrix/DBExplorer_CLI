@@ -1,7 +1,7 @@
 """
 Definition of data structure such as Node, Tree, etc.
 """
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 
 from .exceptions import ObjectNotExists, TFSAttributeError
 
@@ -21,7 +21,7 @@ class Node:
         self.p_node = p_node
         self.name = name
         self.attr: Optional[dict] = attr or {}
-        self.children: dict[str, Node] = {}
+        self.children: Dict[str, Node] = {}
         self.init: bool = False
 
     def __str__(self) -> str:

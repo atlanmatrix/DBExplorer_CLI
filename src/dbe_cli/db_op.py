@@ -1,5 +1,6 @@
 import requests
 import logging
+from typing import Dict
 
 from .conf import DBE_SERVER
 from .utils import parse_req_data
@@ -11,7 +12,7 @@ __all__ = ['fs_open', 'fs_add', 'fs_rm', 'fs_update',
            'stat_add', 'stat_rm', 'stat_update']
 
 
-def fs_open(host, real_path) -> dict[str, dict]:
+def fs_open(host, real_path) -> Dict[str, dict]:
     """
     Get all nodes' data in real_path
     """
@@ -38,7 +39,7 @@ def fs_open(host, real_path) -> dict[str, dict]:
         return False, None
 
 
-def fs_add(host, real_path) -> dict[str, dict]:
+def fs_add(host, real_path) -> Dict[str, dict]:
     """
     Try to create new node
     """
