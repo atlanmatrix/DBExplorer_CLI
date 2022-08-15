@@ -6,8 +6,8 @@ Better performance, higher efficiency and more features.
 pip install dbe-cli
 ```
 
-> If you want to install this program on Windows, you should install pyreadline 
-> first.
+> If you want to install this program on Windows, you should install 
+> pyreadline3 first.
 
 
 ## Usage
